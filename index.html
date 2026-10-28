@@ -5,59 +5,54 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#514956">
-
 <title>Identificador de placas</title>
 
 <style>
 :root {
-  --text: #FFFFFF;
-  --muted: #F0EAF2;
-  --panel: rgba(48, 42, 54, 0.58);
-  --border: rgba(255, 255, 255, 0.65);
+  --panel: rgba(48, 42, 54, 0.68);
+  --border: rgba(255, 255, 255, 0.8);
 }
 
 * {
   box-sizing: border-box;
 }
 
-html,
-body {
+html, body {
   margin: 0;
+  width: 100%;
   min-height: 100%;
   font-family: Arial, Helvetica, sans-serif;
-  color: var(--text);
+  color: white;
 }
 
 body {
   min-height: 100vh;
   min-height: 100dvh;
-  padding: max(1cm, env(safe-area-inset-top)) 0
-           max(22px, env(safe-area-inset-bottom));
+  padding-top: max(1cm, env(safe-area-inset-top));
+  padding-bottom: max(22px, env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
+  position: relative;
+  isolation: isolate;
 
-  /* Fotografía de fondo a pantalla completa */
+  /* FOTO DE FONDO: fondo.jpg */
   background-color: #514956;
-  background-image: url("fondo.jpg");
+  background-image: url("./fondo.jpg");
   background-size: cover;
-  background-position: center center;
+  background-position: center;
   background-repeat: no-repeat;
-  background-attachment: fixed;
 }
 
-/* Capa oscura sutil para mejorar la legibilidad */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
-  background: rgba(35, 30, 40, 0.12);
+  background: rgba(30, 28, 38, 0.16);
   pointer-events: none;
-  z-index: 0;
+  z-index: -1;
 }
 
-.topbar,
-main,
-.bottom-area {
+.topbar, main, .bottom-area {
   position: relative;
   z-index: 1;
 }
@@ -72,7 +67,7 @@ main,
 }
 
 .status-pill {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 10px;
   background: var(--panel);
@@ -81,7 +76,6 @@ main,
   padding: 11px 16px;
   font-size: 14px;
   font-weight: 600;
-  color: white;
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
 }
@@ -105,7 +99,6 @@ main,
   place-items: center;
   font-size: 23px;
   cursor: pointer;
-  backdrop-filter: blur(6px);
 }
 
 main {
@@ -115,44 +108,50 @@ main {
   flex: 1;
 }
 
-/* Ventana horizontal de la cámara */
+/* RECUADRO HORIZONTAL DE LA CÁMARA */
 .camera-frame {
   position: relative;
   width: 100%;
   aspect-ratio: 3 / 2;
   margin-top: clamp(32px, 7vh, 76px);
   overflow: hidden;
-  background: rgba(25, 25, 30, 0.55);
+  background: rgba(20, 20, 25, 0.8);
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
+/* VIDEO EN VIVO DEL TELÉFONO */
 #camera {
-  display: block;
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  background: transparent;
+  background: #29252E;
+  z-index: 1;
+}
+
+/* Ocultar correctamente los elementos inactivos */
+#camera[hidden],
+.camera-placeholder[hidden] {
+  display: none !important;
 }
 
 .camera-placeholder {
   position: absolute;
   inset: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-direction: column;
   gap: 10px;
   padding: 18px;
-  color: white;
   text-align: center;
-  background: rgba(50, 45, 55, 0.35);
-}
-
-.camera-placeholder[hidden],
-#camera[hidden] {
-  display: none;
+  background: rgba(50, 45, 55, 0.72);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .camera-placeholder svg {
@@ -164,14 +163,10 @@ main {
   font-size: 16px;
 }
 
-.camera-placeholder span {
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-/* Esquinas del área de enfoque */
+/* MARCO DE ENFOQUE SOBRE LA CÁMARA */
 .focus-frame {
   position: absolute;
+  z-index: 3;
   width: min(72%, 430px);
   height: 62%;
   left: 50%;
@@ -218,14 +213,13 @@ main {
 }
 
 .helper {
-  margin: 22px 24px 0;
+  margin: 22px 20px 0;
   padding: 14px 16px;
   text-align: center;
-  color: white;
   font-size: 15px;
   line-height: 1.6;
   background: var(--panel);
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 16px;
   backdrop-filter: blur(5px);
   -webkit-backdrop-filter: blur(5px);
@@ -237,6 +231,21 @@ main {
 
 .helper p:last-child {
   margin-bottom: 0;
+}
+
+.settings-note {
+  display: none;
+  margin: 14px 20px 0;
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.settings-note.visible {
+  display: block;
 }
 
 .bottom-area {
@@ -253,7 +262,7 @@ main {
   height: 88px;
   border-radius: 50%;
   border: 2px solid white;
-  background: rgba(55, 49, 60, 0.72);
+  background: rgba(55, 49, 60, 0.78);
   box-shadow: inset 0 0 0 7px rgba(255, 255, 255, 0.22);
   display: grid;
   place-items: center;
@@ -261,10 +270,16 @@ main {
   cursor: pointer;
   transition: transform 0.12s;
   backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
 }
 
 .scan-button:active {
   transform: scale(0.96);
+}
+
+.scan-button:disabled {
+  opacity: 0.65;
+  cursor: wait;
 }
 
 .scan-button svg {
@@ -274,28 +289,11 @@ main {
 
 .bottom-status {
   min-height: 20px;
-  padding: 5px 12px;
+  padding: 6px 12px;
   text-align: center;
-  color: white;
   font-size: 13px;
   background: var(--panel);
   border-radius: 20px;
-}
-
-.settings-note {
-  display: none;
-  margin: 14px 20px 0;
-  padding: 14px;
-  background: rgba(48, 42, 54, 0.82);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  font-size: 13px;
-  line-height: 1.5;
-  color: white;
-}
-
-.settings-note.visible {
-  display: block;
 }
 
 @media (max-height: 650px) {
@@ -331,20 +329,20 @@ main {
 <header class="topbar">
   <div class="status-pill" aria-live="polite">
     <span class="status-dot" id="statusDot"></span>
-    <span id="statusLabel">Reconocimiento listo</span>
+    <span id="statusLabel">Cámara desactivada</span>
   </div>
 
   <button
     class="icon-button"
     id="settingsButton"
     type="button"
-    aria-label="Mostrar información"
+    aria-label="Información"
     title="Información"
   >⚙</button>
 </header>
 
 <main>
-  <section class="camera-frame" aria-label="Vista de cámara">
+  <section class="camera-frame" aria-label="Imagen en vivo de la cámara">
 
     <video id="camera" autoplay muted playsinline hidden></video>
 
@@ -358,8 +356,7 @@ main {
         <circle cx="24" cy="25" r="7"
           stroke="currentColor" stroke-width="2.5"/>
       </svg>
-
-      <strong>Vista de reconocimiento</strong>
+      <strong>Vista de la cámara</strong>
       <span>Presiona el botón inferior para activar la cámara</span>
     </div>
 
@@ -374,12 +371,13 @@ main {
 
   <section class="helper">
     <p><strong>Apunta a una placa con un identificador único.</strong></p>
-    <p>Cuando se detecte una coincidencia, se abrirá su página asociada.</p>
+    <p>La imagen en vivo aparecerá dentro del recuadro horizontal.</p>
   </section>
 
   <div class="settings-note" id="settingsNote">
-    Esta versión activa la cámara y muestra el diseño. El reconocimiento
-    OCR y la apertura automática de las URL deben integrarse por separado.
+    Esta versión muestra la fotografía de fondo y permite activar
+    la cámara trasera del teléfono. El reconocimiento OCR y la apertura
+    automática de enlaces todavía no están integrados.
   </div>
 </main>
 
@@ -402,62 +400,52 @@ main {
         stroke="currentColor" stroke-width="2.5"/>
       <circle cx="24" cy="24.5" r="5.5"
         stroke="currentColor" stroke-width="2.5"/>
-      <circle cx="32" cy="19.5" r="1.5" fill="currentColor"/>
+      <circle cx="32" cy="19.5" r="1.5"
+        fill="currentColor"/>
     </svg>
   </button>
 
   <div class="bottom-status" id="bottomStatus" aria-live="polite">
-    Listo para iniciar
+    Listo para activar la cámara
   </div>
 </footer>
 
 <script>
-const video = document.querySelector('#camera');
-const placeholder = document.querySelector('#cameraPlaceholder');
-const scanButton = document.querySelector('#scanButton');
-const statusLabel = document.querySelector('#statusLabel');
-const statusDot = document.querySelector('#statusDot');
-const bottomStatus = document.querySelector('#bottomStatus');
-const settingsButton = document.querySelector('#settingsButton');
-const settingsNote = document.querySelector('#settingsNote');
+const video = document.getElementById('camera');
+const placeholder = document.getElementById('cameraPlaceholder');
+const scanButton = document.getElementById('scanButton');
+const statusLabel = document.getElementById('statusLabel');
+const statusDot = document.getElementById('statusDot');
+const bottomStatus = document.getElementById('bottomStatus');
+const settingsButton = document.getElementById('settingsButton');
+const settingsNote = document.getElementById('settingsNote');
 
 let stream = null;
+let openingCamera = false;
 
-scanButton.addEventListener('click', async () => {
-  if (stream) {
-    stream.getTracks().forEach(track => track.stop());
-    stream = null;
-
-    video.srcObject = null;
-    video.hidden = true;
-    placeholder.hidden = false;
-
-    statusLabel.textContent = 'Reconocimiento listo';
-    bottomStatus.textContent = 'Cámara detenida';
-    statusDot.style.background = '#DADADA';
-
-    scanButton.setAttribute('aria-label', 'Activar cámara');
-    scanButton.setAttribute('title', 'Activar cámara');
-    return;
-  }
+async function startCamera() {
+  if (openingCamera) return;
 
   if (!navigator.mediaDevices ||
       !navigator.mediaDevices.getUserMedia) {
     bottomStatus.textContent =
-      'La cámara requiere HTTPS y un navegador compatible';
+      'La cámara requiere HTTPS. Abre la página en GitHub Pages.';
     return;
   }
 
-  try {
-    bottomStatus.textContent = 'Solicitando acceso a la cámara…';
+  openingCamera = true;
+  scanButton.disabled = true;
+  bottomStatus.textContent = 'Solicitando acceso a la cámara…';
 
-    stream = await navigator.mediaDevices.getUserMedia({
+  try {
+    const newStream = await navigator.mediaDevices.getUserMedia({
       audio: false,
       video: {
         facingMode: { ideal: 'environment' }
       }
     });
 
+    stream = newStream;
     video.srcObject = stream;
     video.hidden = false;
     placeholder.hidden = true;
@@ -465,9 +453,8 @@ scanButton.addEventListener('click', async () => {
     await video.play();
 
     statusLabel.textContent = 'Cámara activa';
-    bottomStatus.textContent =
-      'Cámara activa · OCR pendiente de conectar';
     statusDot.style.background = '#FFFFFF';
+    bottomStatus.textContent = 'Cámara activa';
 
     scanButton.setAttribute('aria-label', 'Detener cámara');
     scanButton.setAttribute('title', 'Detener cámara');
@@ -475,14 +462,57 @@ scanButton.addEventListener('click', async () => {
   } catch (error) {
     if (stream) {
       stream.getTracks().forEach(track => track.stop());
+      stream = null;
     }
 
-    stream = null;
+    video.srcObject = null;
+    video.hidden = true;
+    placeholder.hidden = false;
 
-    bottomStatus.textContent =
-      'No se pudo abrir la cámara. Revisa los permisos.';
     statusLabel.textContent = 'Cámara no disponible';
-    statusDot.style.background = '#999999';
+    statusDot.style.background = '#DADADA';
+
+    if (error.name === 'NotAllowedError') {
+      bottomStatus.textContent =
+        'Permite el acceso a la cámara en el navegador.';
+    } else if (error.name === 'NotFoundError') {
+      bottomStatus.textContent =
+        'No se encontró una cámara disponible.';
+    } else {
+      bottomStatus.textContent =
+        'No se pudo abrir la cámara. Comprueba HTTPS y los permisos.';
+    }
+
+  } finally {
+    openingCamera = false;
+    scanButton.disabled = false;
+  }
+}
+
+function stopCamera() {
+  if (stream) {
+    stream.getTracks().forEach(track => track.stop());
+    stream = null;
+  }
+
+  video.pause();
+  video.srcObject = null;
+  video.hidden = true;
+  placeholder.hidden = false;
+
+  statusLabel.textContent = 'Cámara desactivada';
+  statusDot.style.background = '#DADADA';
+  bottomStatus.textContent = 'Cámara detenida';
+
+  scanButton.setAttribute('aria-label', 'Activar cámara');
+  scanButton.setAttribute('title', 'Activar cámara');
+}
+
+scanButton.addEventListener('click', () => {
+  if (stream) {
+    stopCamera();
+  } else {
+    startCamera();
   }
 });
 
@@ -493,6 +523,7 @@ settingsButton.addEventListener('click', () => {
 window.addEventListener('pagehide', () => {
   if (stream) {
     stream.getTracks().forEach(track => track.stop());
+    stream = null;
   }
 });
 </script>

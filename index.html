@@ -1,0 +1,501 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#514956">
+
+<title>Identificador de placas</title>
+
+<style>
+:root {
+  --text: #FFFFFF;
+  --muted: #F0EAF2;
+  --panel: rgba(48, 42, 54, 0.58);
+  --border: rgba(255, 255, 255, 0.65);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  font-family: Arial, Helvetica, sans-serif;
+  color: var(--text);
+}
+
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: max(1cm, env(safe-area-inset-top)) 0
+           max(22px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+
+  /* Fotografía de fondo a pantalla completa */
+  background-color: #514956;
+  background-image: url("fondo.jpg");
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+/* Capa oscura sutil para mejorar la legibilidad */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: rgba(35, 30, 40, 0.12);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.topbar,
+main,
+.bottom-area {
+  position: relative;
+  z-index: 1;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 20px;
+  min-height: 48px;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 11px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #DADADA;
+  flex-shrink: 0;
+}
+
+.icon-button {
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--panel);
+  color: white;
+  display: grid;
+  place-items: center;
+  font-size: 23px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+}
+
+main {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+/* Ventana horizontal de la cámara */
+.camera-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  margin-top: clamp(32px, 7vh, 76px);
+  overflow: hidden;
+  background: rgba(25, 25, 30, 0.55);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+#camera {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: transparent;
+}
+
+.camera-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  color: white;
+  text-align: center;
+  background: rgba(50, 45, 55, 0.35);
+}
+
+.camera-placeholder[hidden],
+#camera[hidden] {
+  display: none;
+}
+
+.camera-placeholder svg {
+  width: 44px;
+  height: 44px;
+}
+
+.camera-placeholder strong {
+  font-size: 16px;
+}
+
+.camera-placeholder span {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Esquinas del área de enfoque */
+.focus-frame {
+  position: absolute;
+  width: min(72%, 430px);
+  height: 62%;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.corner {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  border-color: white;
+  border-style: solid;
+  filter: drop-shadow(0 1px 3px #333);
+}
+
+.tl {
+  top: 0;
+  left: 0;
+  border-width: 4px 0 0 4px;
+  border-radius: 10px 0 0;
+}
+
+.tr {
+  top: 0;
+  right: 0;
+  border-width: 4px 4px 0 0;
+  border-radius: 0 10px 0 0;
+}
+
+.bl {
+  bottom: 0;
+  left: 0;
+  border-width: 0 0 4px 4px;
+  border-radius: 0 0 0 10px;
+}
+
+.br {
+  bottom: 0;
+  right: 0;
+  border-width: 0 4px 4px 0;
+  border-radius: 0 0 10px;
+}
+
+.helper {
+  margin: 22px 24px 0;
+  padding: 14px 16px;
+  text-align: center;
+  color: white;
+  font-size: 15px;
+  line-height: 1.6;
+  background: var(--panel);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 16px;
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+.helper p {
+  margin: 0 0 7px;
+}
+
+.helper p:last-child {
+  margin-bottom: 0;
+}
+
+.bottom-area {
+  margin-top: auto;
+  padding: 28px 24px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.scan-button {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  border: 2px solid white;
+  background: rgba(55, 49, 60, 0.72);
+  box-shadow: inset 0 0 0 7px rgba(255, 255, 255, 0.22);
+  display: grid;
+  place-items: center;
+  color: white;
+  cursor: pointer;
+  transition: transform 0.12s;
+  backdrop-filter: blur(5px);
+}
+
+.scan-button:active {
+  transform: scale(0.96);
+}
+
+.scan-button svg {
+  width: 38px;
+  height: 38px;
+}
+
+.bottom-status {
+  min-height: 20px;
+  padding: 5px 12px;
+  text-align: center;
+  color: white;
+  font-size: 13px;
+  background: var(--panel);
+  border-radius: 20px;
+}
+
+.settings-note {
+  display: none;
+  margin: 14px 20px 0;
+  padding: 14px;
+  background: rgba(48, 42, 54, 0.82);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: white;
+}
+
+.settings-note.visible {
+  display: block;
+}
+
+@media (max-height: 650px) {
+  .camera-frame {
+    margin-top: 24px;
+  }
+
+  .helper {
+    margin-top: 14px;
+  }
+
+  .bottom-area {
+    padding-top: 14px;
+  }
+
+  .scan-button {
+    width: 72px;
+    height: 72px;
+  }
+}
+
+@media (min-width: 700px) {
+  body {
+    max-width: 520px;
+    margin: 0 auto;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<header class="topbar">
+  <div class="status-pill" aria-live="polite">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusLabel">Reconocimiento listo</span>
+  </div>
+
+  <button
+    class="icon-button"
+    id="settingsButton"
+    type="button"
+    aria-label="Mostrar información"
+    title="Información"
+  >⚙</button>
+</header>
+
+<main>
+  <section class="camera-frame" aria-label="Vista de cámara">
+
+    <video id="camera" autoplay muted playsinline hidden></video>
+
+    <div class="camera-placeholder" id="cameraPlaceholder">
+      <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+        <rect x="5" y="12" width="38" height="27" rx="4"
+          stroke="currentColor" stroke-width="2.5"/>
+        <path d="M15 12l3-5h12l3 5"
+          stroke="currentColor" stroke-width="2.5"
+          stroke-linejoin="round"/>
+        <circle cx="24" cy="25" r="7"
+          stroke="currentColor" stroke-width="2.5"/>
+      </svg>
+
+      <strong>Vista de reconocimiento</strong>
+      <span>Presiona el botón inferior para activar la cámara</span>
+    </div>
+
+    <div class="focus-frame" aria-hidden="true">
+      <i class="corner tl"></i>
+      <i class="corner tr"></i>
+      <i class="corner bl"></i>
+      <i class="corner br"></i>
+    </div>
+
+  </section>
+
+  <section class="helper">
+    <p><strong>Apunta a una placa con un identificador único.</strong></p>
+    <p>Cuando se detecte una coincidencia, se abrirá su página asociada.</p>
+  </section>
+
+  <div class="settings-note" id="settingsNote">
+    Esta versión activa la cámara y muestra el diseño. El reconocimiento
+    OCR y la apertura automática de las URL deben integrarse por separado.
+  </div>
+</main>
+
+<footer class="bottom-area">
+  <button
+    class="scan-button"
+    id="scanButton"
+    type="button"
+    aria-label="Activar cámara"
+    title="Activar cámara"
+  >
+    <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+      <path d="M6 16v-5a4 4 0 0 1 4-4h5
+               M33 7h5a4 4 0 0 1 4 4v5
+               M42 32v5a4 4 0 0 1-4 4h-5
+               M15 41h-5a4 4 0 0 1-4-4v-5"
+        stroke="currentColor" stroke-width="3"
+        stroke-linecap="round"/>
+      <rect x="12" y="15" width="24" height="19" rx="4"
+        stroke="currentColor" stroke-width="2.5"/>
+      <circle cx="24" cy="24.5" r="5.5"
+        stroke="currentColor" stroke-width="2.5"/>
+      <circle cx="32" cy="19.5" r="1.5" fill="currentColor"/>
+    </svg>
+  </button>
+
+  <div class="bottom-status" id="bottomStatus" aria-live="polite">
+    Listo para iniciar
+  </div>
+</footer>
+
+<script>
+const video = document.querySelector('#camera');
+const placeholder = document.querySelector('#cameraPlaceholder');
+const scanButton = document.querySelector('#scanButton');
+const statusLabel = document.querySelector('#statusLabel');
+const statusDot = document.querySelector('#statusDot');
+const bottomStatus = document.querySelector('#bottomStatus');
+const settingsButton = document.querySelector('#settingsButton');
+const settingsNote = document.querySelector('#settingsNote');
+
+let stream = null;
+
+scanButton.addEventListener('click', async () => {
+  if (stream) {
+    stream.getTracks().forEach(track => track.stop());
+    stream = null;
+
+    video.srcObject = null;
+    video.hidden = true;
+    placeholder.hidden = false;
+
+    statusLabel.textContent = 'Reconocimiento listo';
+    bottomStatus.textContent = 'Cámara detenida';
+    statusDot.style.background = '#DADADA';
+
+    scanButton.setAttribute('aria-label', 'Activar cámara');
+    scanButton.setAttribute('title', 'Activar cámara');
+    return;
+  }
+
+  if (!navigator.mediaDevices ||
+      !navigator.mediaDevices.getUserMedia) {
+    bottomStatus.textContent =
+      'La cámara requiere HTTPS y un navegador compatible';
+    return;
+  }
+
+  try {
+    bottomStatus.textContent = 'Solicitando acceso a la cámara…';
+
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        facingMode: { ideal: 'environment' }
+      }
+    });
+
+    video.srcObject = stream;
+    video.hidden = false;
+    placeholder.hidden = true;
+
+    await video.play();
+
+    statusLabel.textContent = 'Cámara activa';
+    bottomStatus.textContent =
+      'Cámara activa · OCR pendiente de conectar';
+    statusDot.style.background = '#FFFFFF';
+
+    scanButton.setAttribute('aria-label', 'Detener cámara');
+    scanButton.setAttribute('title', 'Detener cámara');
+
+  } catch (error) {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
+
+    stream = null;
+
+    bottomStatus.textContent =
+      'No se pudo abrir la cámara. Revisa los permisos.';
+    statusLabel.textContent = 'Cámara no disponible';
+    statusDot.style.background = '#999999';
+  }
+});
+
+settingsButton.addEventListener('click', () => {
+  settingsNote.classList.toggle('visible');
+});
+
+window.addEventListener('pagehide', () => {
+  if (stream) {
+    stream.getTracks().forEach(track => track.stop());
+  }
+});
+</script>
+
+</body>
+</html>

@@ -402,6 +402,7 @@ main {
   </div>
 </footer>
 
+<script>
 function ajustarFondo() {
     const camara = document.querySelector('.camera-frame');
     if (!camara) return;
@@ -426,7 +427,6 @@ function ajustarFondo() {
 window.addEventListener('load', ajustarFondo);
 window.addEventListener('resize', ajustarFondo);
 
-<script>
 const video = document.getElementById('camera');
 const placeholder = document.getElementById('cameraPlaceholder');
 const scanButton = document.getElementById('scanButton');

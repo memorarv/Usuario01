@@ -30,7 +30,7 @@ body {
     min-height: 100vh;
 
     background-image: url("./fondo.jpg"), url("./fondo.jpg");
-    background-size: 100% 50%, 100% 50%;
+    background-size: 100% 100%, 100% 100%;
     background-position: top center, bottom center;
     background-repeat: no-repeat, no-repeat;
 }
@@ -401,6 +401,30 @@ main {
     Listo para activar la cámara
   </div>
 </footer>
+
+function ajustarFondo() {
+    const camara = document.querySelector('.camera-frame');
+    if (!camara) return;
+
+    const bordeInferior = camara.getBoundingClientRect().bottom
+                        + window.scrollY;
+
+    const alturaPagina = Math.max(
+        document.documentElement.scrollHeight,
+        window.innerHeight
+    );
+
+    const porcentaje = (bordeInferior / alturaPagina) * 100;
+
+    document.body.style.backgroundSize =
+        `100% ${porcentaje}%, 100% ${100 - porcentaje}%`;
+
+    document.body.style.backgroundPosition =
+        'top center, bottom center';
+}
+
+window.addEventListener('load', ajustarFondo);
+window.addEventListener('resize', ajustarFondo);
 
 <script>
 const video = document.getElementById('camera');

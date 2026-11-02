@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -552,7 +553,7 @@ async function stopRecognition(updateText = true) {
 async function scanLoop() {
   if (!scanning || busy || redirected || !worker) return;
   if (video.readyState < 2 || !video.videoWidth) {
-    setTimeout(scanLoop, 250);
+    setTimeout(scanLoop, 150);
     return;
   }
   busy = true;
@@ -581,8 +582,8 @@ async function scanLoop() {
     if (match) {
       if (lastCandidate === match.id) streak++;
       else { lastCandidate = match.id; streak = 1; }
-      bottomStatus.textContent = `Coincidencia ${match.id}: confirmando ${streak}/3…`;
-      if (streak >= 3) {
+      bottomStatus.textContent = `Coincidencia ${match.id}: confirmando ${streak}/2…`;
+      if (streak >= 2) {
         redirected = true;
         saveHistory(match.id);
         statusLabel.textContent = 'Placa identificada';

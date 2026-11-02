@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -337,6 +336,7 @@ main {
   <section class="camera-frame" aria-label="Imagen en vivo de la cámara">
 
     <video id="camera" autoplay muted playsinline hidden></video>
+    <canvas id="ocrCanvas" hidden></canvas>
 
     <div class="camera-placeholder" id="cameraPlaceholder">
       <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
@@ -367,9 +367,21 @@ main {
   </section>
 
   <div class="settings-note" id="settingsNote">
-    Esta versión muestra la fotografía de fondo y permite activar
-    la cámara trasera del teléfono. El reconocimiento OCR y la apertura
-    automática de enlaces todavía no están integrados.
+    <strong>Configuración de reconocimiento</strong>
+    <p>La cámara analiza el texto de las placas y abre el enlace asociado cuando detecta una coincidencia estable.</p>
+    <label for="mapping" style="display:block;margin:12px 0 6px;font-weight:600">Placas registradas (JSON)</label>
+    <textarea id="mapping" spellcheck="false" aria-label="Identificadores de placas y direcciones web" style="width:100%;min-height:120px;padding:10px;border:1px solid rgba(255,255,255,.5);border-radius:8px;background:rgba(20,20,25,.55);color:white;font:12px monospace"></textarea>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <button id="saveMapping" type="button" style="padding:8px 12px;border:1px solid white;border-radius:8px;background:rgba(30,30,35,.65);color:white">Guardar placas</button>
+      <button id="resetMapping" type="button" style="padding:8px 12px;border:1px solid white;border-radius:8px;background:rgba(30,30,35,.65);color:white">Restablecer ejemplo</button>
+    </div>
+    <p id="mappingStatus" aria-live="polite">Configuración guardada en este dispositivo.</p>
+    <hr style="border-color:rgba(255,255,255,.25);margin:14px 0">
+    <strong>Diagnóstico OCR</strong>
+    <p>Intentos: <span id="ocrAttempts">0</span> · Último análisis: <span id="ocrTime">—</span> · Tiempo desde activar: <span id="ocrTotal">0 s</span></p>
+    <p>Texto reconocido:</p>
+    <pre id="ocrText" style="white-space:pre-wrap;overflow-wrap:anywhere;margin:0;padding:8px;border-radius:8px;background:rgba(20,20,25,.55)">Esperando reconocimiento…</pre>
+    <p id="ocrHistory" style="overflow-wrap:anywhere">Historial: sin coincidencias en esta sesión.</p>
   </div>
 </main>
 
@@ -402,28 +414,17 @@ main {
   </div>
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script>
 function ajustarFondo() {
-    const camara = document.querySelector('.camera-frame');
-    if (!camara) return;
-
-    const bordeInferior = camara.getBoundingClientRect().bottom
-                        + window.scrollY;
-
-    const alturaPagina = Math.max(
-        document.documentElement.scrollHeight,
-        window.innerHeight
-    );
-
-    const porcentaje = (bordeInferior / alturaPagina) * 100;
-
-    document.body.style.backgroundSize =
-        `100% ${porcentaje}%, 100% ${100 - porcentaje}%`;
-
-    document.body.style.backgroundPosition =
-        'top center, bottom center';
+  const camara = document.querySelector('.camera-frame');
+  if (!camara) return;
+  const bordeInferior = camara.getBoundingClientRect().bottom + window.scrollY;
+  const alturaPagina = Math.max(document.documentElement.scrollHeight, window.innerHeight);
+  const porcentaje = Math.max(1, Math.min(99, (bordeInferior / alturaPagina) * 100));
+  document.body.style.backgroundSize = `100% ${porcentaje}%, 100% ${100 - porcentaje}%`;
+  document.body.style.backgroundPosition = 'top center, bottom center';
 }
-
 window.addEventListener('load', ajustarFondo);
 window.addEventListener('resize', ajustarFondo);
 
@@ -435,113 +436,248 @@ const statusDot = document.getElementById('statusDot');
 const bottomStatus = document.getElementById('bottomStatus');
 const settingsButton = document.getElementById('settingsButton');
 const settingsNote = document.getElementById('settingsNote');
+const canvas = document.getElementById('ocrCanvas');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
+const mappingEl = document.getElementById('mapping');
+const mappingStatus = document.getElementById('mappingStatus');
+const attemptsEl = document.getElementById('ocrAttempts');
+const timeEl = document.getElementById('ocrTime');
+const totalEl = document.getElementById('ocrTotal');
+const textEl = document.getElementById('ocrText');
+const historyEl = document.getElementById('ocrHistory');
 
+const SAMPLE_PLATES = [
+  { id: 'identi', url: 'https://memorarv.github.io/00_Main/' },
+  { id: 'Arnold', url: 'https://memorarv.github.io/01_Arnold/' },
+  { id: 'Aguirre', url: 'https://memorarv.github.io/02_Aguirre/' }
+];
+const MAP_KEY = 'placas-map';
+const HISTORY_KEY = 'placas-scan-history';
+const MAX_HISTORY = 200;
 let stream = null;
 let openingCamera = false;
+let worker = null;
+let scanning = false;
+let busy = false;
+let redirected = false;
+let lastCandidate = '';
+let streak = 0;
+let attempts = 0;
+let ocrStart = 0;
+let scanSessionStart = 0;
 
-async function startCamera() {
-  if (openingCamera) return;
+function normalize(value) {
+  return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+function loadMapping() {
+  let records = SAMPLE_PLATES;
+  try {
+    const saved = localStorage.getItem(MAP_KEY);
+    if (saved) records = JSON.parse(saved);
+  } catch (e) { console.warn('No se pudo leer el mapa de placas', e); }
+  mappingEl.value = JSON.stringify(records, null, 2);
+}
+function getRecords() {
+  const records = JSON.parse(mappingEl.value);
+  if (!Array.isArray(records)) throw new Error('La configuración debe ser una lista JSON.');
+  for (const record of records) {
+    if (!record.id || !record.url) throw new Error('Cada placa debe tener id y url.');
+    const url = new URL(record.url);
+    if (url.protocol !== 'https:') throw new Error('Las URL deben usar HTTPS.');
+  }
+  return records;
+}
+function updateStatus(message, detail = '') {
+  bottomStatus.textContent = message;
+  if (detail) textEl.textContent = detail;
+}
+function readHistory() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); }
+  catch { return []; }
+}
+function renderHistory() {
+  const history = readHistory();
+  historyEl.textContent = history.length
+    ? 'Últimas coincidencias: ' + history.slice(0, 5).map(item => `${item.id} (${item.elapsed})`).join(' · ')
+    : 'Historial: sin coincidencias registradas.';
+}
+function saveHistory(id) {
+  const elapsed = scanSessionStart ? ((Date.now() - scanSessionStart) / 1000).toFixed(2) + ' s' : '—';
+  const history = readHistory();
+  history.unshift({ id, elapsed, date: new Date().toISOString() });
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY))); }
+  catch (e) { console.warn('No se pudo guardar el historial', e); }
+  renderHistory();
+}
 
-  if (!navigator.mediaDevices ||
-      !navigator.mediaDevices.getUserMedia) {
-    bottomStatus.textContent =
-      'La cámara requiere HTTPS. Abre la página en GitHub Pages.';
+document.getElementById('saveMapping').addEventListener('click', () => {
+  try {
+    const records = getRecords();
+    localStorage.setItem(MAP_KEY, JSON.stringify(records));
+    mappingEl.value = JSON.stringify(records, null, 2);
+    mappingStatus.textContent = `Guardadas ${records.length} placas en este dispositivo.`;
+  } catch (e) { mappingStatus.textContent = 'No se guardó: ' + e.message; }
+});
+document.getElementById('resetMapping').addEventListener('click', () => {
+  mappingEl.value = JSON.stringify(SAMPLE_PLATES, null, 2);
+  localStorage.removeItem(MAP_KEY);
+  mappingStatus.textContent = 'Se restauró el ejemplo. Pulsa “Guardar placas” para guardarlo en este dispositivo.';
+});
+settingsButton.addEventListener('click', () => {
+  settingsNote.classList.toggle('visible');
+  if (settingsNote.classList.contains('visible')) ajustarFondo();
+});
+
+async function stopRecognition(updateText = true) {
+  scanning = false;
+  redirected = false;
+  if (stream) stream.getTracks().forEach(track => track.stop());
+  stream = null;
+  if (worker) {
+    try { await worker.terminate(); } catch (e) { console.warn(e); }
+    worker = null;
+  }
+  video.pause();
+  video.srcObject = null;
+  video.hidden = true;
+  placeholder.hidden = false;
+  statusLabel.textContent = 'Cámara desactivada';
+  statusDot.style.background = '#DADADA';
+  scanButton.disabled = false;
+  scanButton.setAttribute('aria-label', 'Activar cámara');
+  scanButton.setAttribute('title', 'Activar cámara');
+  if (updateText) bottomStatus.textContent = 'Cámara detenida';
+}
+
+async function scanLoop() {
+  if (!scanning || busy || redirected || !worker) return;
+  if (video.readyState < 2 || !video.videoWidth) {
+    setTimeout(scanLoop, 250);
     return;
   }
+  busy = true;
+  try {
+    const maxWidth = 800;
+    const scale = Math.min(1, maxWidth / video.videoWidth);
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const started = performance.now();
+    const result = await worker.recognize(canvas);
+    const elapsed = performance.now() - started;
+    const recognized = (result.data.text || '').trim();
+    attempts++;
+    attemptsEl.textContent = String(attempts);
+    timeEl.textContent = Math.round(elapsed) + ' ms';
+    totalEl.textContent = ((performance.now() - ocrStart) / 1000).toFixed(1) + ' s';
+    textEl.textContent = recognized || '(no se reconoció texto)';
 
+    const compact = normalize(recognized);
+    const records = getRecords();
+    const match = records.find(record => {
+      const id = normalize(record.id);
+      return id.length >= 3 && compact.includes(id);
+    });
+    if (match) {
+      if (lastCandidate === match.id) streak++;
+      else { lastCandidate = match.id; streak = 1; }
+      bottomStatus.textContent = `Coincidencia ${match.id}: confirmando ${streak}/3…`;
+      if (streak >= 3) {
+        redirected = true;
+        saveHistory(match.id);
+        statusLabel.textContent = 'Placa identificada';
+        bottomStatus.textContent = `Placa ${match.id} identificada. Abriendo enlace…`;
+        await stopTracksOnly();
+        window.location.assign(match.url);
+        return;
+      }
+    } else {
+      lastCandidate = '';
+      streak = 0;
+      bottomStatus.textContent = 'Buscando una placa registrada…';
+    }
+  } catch (e) {
+    console.error('Error OCR:', e);
+    bottomStatus.textContent = 'Error de reconocimiento. Revisa la configuración en ⚙.';
+    mappingStatus.textContent = e.message || String(e);
+  } finally {
+    busy = false;
+    if (scanning && !redirected) setTimeout(scanLoop, 500);
+  }
+}
+async function stopTracksOnly() {
+  scanning = false;
+  if (stream) stream.getTracks().forEach(track => track.stop());
+  stream = null;
+}
+
+async function startRecognition() {
+  if (openingCamera || scanning) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    bottomStatus.textContent = 'La cámara requiere HTTPS. Abre la página en GitHub Pages.';
+    return;
+  }
   openingCamera = true;
   scanButton.disabled = true;
   bottomStatus.textContent = 'Solicitando acceso a la cámara…';
-
   try {
-    const newStream = await navigator.mediaDevices.getUserMedia({
+    // Validate the configured records before activating OCR.
+    getRecords();
+    stream = await navigator.mediaDevices.getUserMedia({
       audio: false,
-      video: {
-        facingMode: { ideal: 'environment' }
-      }
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
     });
-
-    stream = newStream;
     video.srcObject = stream;
     video.hidden = false;
     placeholder.hidden = true;
-
     await video.play();
-
-    statusLabel.textContent = 'Cámara activa';
+    statusLabel.textContent = 'Inicializando reconocimiento';
     statusDot.style.background = '#FFFFFF';
-    bottomStatus.textContent = 'Cámara activa';
-
-    scanButton.setAttribute('aria-label', 'Detener cámara');
-    scanButton.setAttribute('title', 'Detener cámara');
-
-  } catch (error) {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      stream = null;
-    }
-
-    video.srcObject = null;
-    video.hidden = true;
-    placeholder.hidden = false;
-
-    statusLabel.textContent = 'Cámara no disponible';
+    bottomStatus.textContent = 'Cargando OCR en español…';
+    attempts = 0;
+    ocrStart = performance.now();
+    scanSessionStart = Date.now();
+    attemptsEl.textContent = '0';
+    timeEl.textContent = '—';
+    totalEl.textContent = '0 s';
+    textEl.textContent = 'Inicializando reconocimiento…';
+    lastCandidate = '';
+    streak = 0;
+    redirected = false;
+    worker = await Tesseract.createWorker('spa', 1, {
+      langPath: 'https://tessdata.projectnaptha.com/4.0.0_fast'
+    });
+    await worker.setParameters({ tessedit_pageseg_mode: '6' });
+    scanning = true;
+    statusLabel.textContent = 'Reconocimiento activo';
+    bottomStatus.textContent = 'Apunta a una placa registrada';
+    scanButton.disabled = false;
+    scanButton.setAttribute('aria-label', 'Detener reconocimiento');
+    scanButton.setAttribute('title', 'Detener reconocimiento');
+    scanLoop();
+  } catch (e) {
+    console.error(e);
+    await stopRecognition(false);
+    statusLabel.textContent = 'Reconocimiento no disponible';
     statusDot.style.background = '#DADADA';
-
-    if (error.name === 'NotAllowedError') {
-      bottomStatus.textContent =
-        'Permite el acceso a la cámara en el navegador.';
-    } else if (error.name === 'NotFoundError') {
-      bottomStatus.textContent =
-        'No se encontró una cámara disponible.';
-    } else {
-      bottomStatus.textContent =
-        'No se pudo abrir la cámara. Comprueba HTTPS y los permisos.';
-    }
-
+    bottomStatus.textContent = 'No se pudo iniciar cámara/OCR. Revisa permisos y conexión a internet.';
+    mappingStatus.textContent = e.message || String(e);
   } finally {
     openingCamera = false;
     scanButton.disabled = false;
   }
 }
-
-function stopCamera() {
-  if (stream) {
-    stream.getTracks().forEach(track => track.stop());
-    stream = null;
-  }
-
-  video.pause();
-  video.srcObject = null;
-  video.hidden = true;
-  placeholder.hidden = false;
-
-  statusLabel.textContent = 'Cámara desactivada';
-  statusDot.style.background = '#DADADA';
-  bottomStatus.textContent = 'Cámara detenida';
-
-  scanButton.setAttribute('aria-label', 'Activar cámara');
-  scanButton.setAttribute('title', 'Activar cámara');
-}
-
-scanButton.addEventListener('click', () => {
-  if (stream) {
-    stopCamera();
-  } else {
-    startCamera();
-  }
+scanButton.addEventListener('click', async () => {
+  if (scanning || stream) await stopRecognition();
+  else await startRecognition();
 });
-
-settingsButton.addEventListener('click', () => {
-  settingsNote.classList.toggle('visible');
-});
-
 window.addEventListener('pagehide', () => {
-  if (stream) {
-    stream.getTracks().forEach(track => track.stop());
-    stream = null;
-  }
+  scanning = false;
+  if (stream) stream.getTracks().forEach(track => track.stop());
+  if (worker) worker.terminate().catch(() => {});
 });
+loadMapping();
+renderHistory();
 </script>
 
 </body>

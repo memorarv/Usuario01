@@ -370,13 +370,9 @@ main {
   <div class="settings-note" id="settingsNote">
     <strong>Configuración de reconocimiento</strong>
     <p>La cámara analiza el texto de las placas y abre el enlace asociado cuando detecta una coincidencia estable.</p>
-    <label for="mapping" style="display:block;margin:12px 0 6px;font-weight:600">Placas registradas (JSON)</label>
-    <textarea id="mapping" spellcheck="false" aria-label="Identificadores de placas y direcciones web" style="width:100%;min-height:120px;padding:10px;border:1px solid rgba(255,255,255,.5);border-radius:8px;background:rgba(20,20,25,.55);color:white;font:12px monospace"></textarea>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-      <button id="saveMapping" type="button" style="padding:8px 12px;border:1px solid white;border-radius:8px;background:rgba(30,30,35,.65);color:white">Guardar placas</button>
-      <button id="resetMapping" type="button" style="padding:8px 12px;border:1px solid white;border-radius:8px;background:rgba(30,30,35,.65);color:white">Restablecer ejemplo</button>
-    </div>
-    <p id="mappingStatus" aria-live="polite">Configuración guardada en este dispositivo.</p>
+    <p>Usuario: <strong id="usuarioLabel">Cargando usuario…</strong></p>
+    <p id="mappingStatus" aria-live="polite">Cargando configuración compartida…</p>
+    <p id="mappingDetails">Las palabras y el enlace se leen desde data.txt.</p>
     <hr style="border-color:rgba(255,255,255,.25);margin:14px 0">
     <strong>Diagnóstico OCR</strong>
     <p>Intentos: <span id="ocrAttempts">0</span> · Último análisis: <span id="ocrTime">—</span> · Tiempo desde activar: <span id="ocrTotal">0 s</span></p>
@@ -439,20 +435,17 @@ const settingsButton = document.getElementById('settingsButton');
 const settingsNote = document.getElementById('settingsNote');
 const canvas = document.getElementById('ocrCanvas');
 const ctx = canvas.getContext('2d', { willReadFrequently: true });
-const mappingEl = document.getElementById('mapping');
 const mappingStatus = document.getElementById('mappingStatus');
+const usuarioLabel = document.getElementById('usuarioLabel');
+const DATA_URL = 'https://memorarv.github.io/00_main/data.txt';
+let usuario = '';
+let records = [];
 const attemptsEl = document.getElementById('ocrAttempts');
 const timeEl = document.getElementById('ocrTime');
 const totalEl = document.getElementById('ocrTotal');
 const textEl = document.getElementById('ocrText');
 const historyEl = document.getElementById('ocrHistory');
 
-const SAMPLE_PLATES = [
-  { id: 'identi', url: 'https://memorarv.github.io/00_Main/' },
-  { id: 'Arnold', url: 'https://memorarv.github.io/01_Arnold/' },
-  { id: 'Aguirre', url: 'https://memorarv.github.io/02_Aguirre/' }
-];
-const MAP_KEY = 'placas-map';
 const HISTORY_KEY = 'placas-scan-history';
 const MAX_HISTORY = 200;
 let stream = null;
@@ -470,22 +463,46 @@ let scanSessionStart = 0;
 function normalize(value) {
   return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
-function loadMapping() {
-  let records = SAMPLE_PLATES;
+async function loadMapping() {
+  records = [];
   try {
-    const saved = localStorage.getItem(MAP_KEY);
-    if (saved) records = JSON.parse(saved);
-  } catch (e) { console.warn('No se pudo leer el mapa de placas', e); }
-  mappingEl.value = JSON.stringify(records, null, 2);
+    // usuario.txt debe estar en la misma carpeta que esta página.
+    const userResponse = await fetch('./usuario.txt', { cache: 'no-store' });
+    if (!userResponse.ok) throw new Error(`No se pudo leer usuario.txt (HTTP ${userResponse.status}).`);
+    usuario = (await userResponse.text()).trim().split(/\s+/)[0] || '';
+    if (!usuario) throw new Error('El archivo usuario.txt está vacío.');
+    usuarioLabel.textContent = usuario;
+
+    const dataResponse = await fetch(DATA_URL, { cache: 'no-store' });
+    if (!dataResponse.ok) throw new Error(`No se pudo leer data.txt (HTTP ${dataResponse.status}).`);
+    const dataText = await dataResponse.text();
+    const lines = dataText.split(/\r?\n/);
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith('#')) continue;
+      const fields = line.split(/\s+/);
+      if (fields.length < 3) continue;
+      const [user, word, urlText] = fields;
+      if (user !== usuario) continue;
+      const url = new URL(urlText);
+      if (url.protocol !== 'https:') throw new Error(`La URL de la palabra "${word}" debe usar HTTPS.`);
+      records.push({ id: word, url: url.href });
+    }
+    if (!records.length) throw new Error(`No hay filas para "${usuario}" en data.txt.`);
+    const uniqueUrls = [...new Set(records.map(record => record.url))];
+    if (uniqueUrls.length > 1) throw new Error(`Las filas de "${usuario}" deben tener la misma URL.`);
+    mappingStatus.textContent = `Configuración cargada: ${records.length} palabra(s) para ${usuario}.`;
+    document.getElementById('mappingDetails').textContent = `Destino configurado: ${uniqueUrls[0]}`;
+    return records;
+  } catch (e) {
+    records = [];
+    usuarioLabel.textContent = usuario || 'No disponible';
+    mappingStatus.textContent = 'Error de configuración: ' + e.message;
+    throw e;
+  }
 }
 function getRecords() {
-  const records = JSON.parse(mappingEl.value);
-  if (!Array.isArray(records)) throw new Error('La configuración debe ser una lista JSON.');
-  for (const record of records) {
-    if (!record.id || !record.url) throw new Error('Cada placa debe tener id y url.');
-    const url = new URL(record.url);
-    if (url.protocol !== 'https:') throw new Error('Las URL deben usar HTTPS.');
-  }
+  if (!records.length) throw new Error('No hay palabras configuradas. Revisa usuario.txt y data.txt en ⚙.');
   return records;
 }
 function updateStatus(message, detail = '') {
@@ -511,19 +528,6 @@ function saveHistory(id) {
   renderHistory();
 }
 
-document.getElementById('saveMapping').addEventListener('click', () => {
-  try {
-    const records = getRecords();
-    localStorage.setItem(MAP_KEY, JSON.stringify(records));
-    mappingEl.value = JSON.stringify(records, null, 2);
-    mappingStatus.textContent = `Guardadas ${records.length} placas en este dispositivo.`;
-  } catch (e) { mappingStatus.textContent = 'No se guardó: ' + e.message; }
-});
-document.getElementById('resetMapping').addEventListener('click', () => {
-  mappingEl.value = JSON.stringify(SAMPLE_PLATES, null, 2);
-  localStorage.removeItem(MAP_KEY);
-  mappingStatus.textContent = 'Se restauró el ejemplo. Pulsa “Guardar placas” para guardarlo en este dispositivo.';
-});
 settingsButton.addEventListener('click', () => {
   settingsNote.classList.toggle('visible');
   if (settingsNote.classList.contains('visible')) ajustarFondo();
@@ -603,7 +607,7 @@ async function scanLoop() {
     mappingStatus.textContent = e.message || String(e);
   } finally {
     busy = false;
-    if (scanning && !redirected) setTimeout(scanLoop, 500);
+    if (scanning && !redirected) setTimeout(scanLoop, 150);
   }
 }
 async function stopTracksOnly() {
@@ -622,7 +626,8 @@ async function startRecognition() {
   scanButton.disabled = true;
   bottomStatus.textContent = 'Solicitando acceso a la cámara…';
   try {
-    // Validate the configured records before activating OCR.
+    // Load the user's shared word/URL configuration before activating OCR.
+    await loadMapping();
     getRecords();
     stream = await navigator.mediaDevices.getUserMedia({
       audio: false,
@@ -677,7 +682,7 @@ window.addEventListener('pagehide', () => {
   if (stream) stream.getTracks().forEach(track => track.stop());
   if (worker) worker.terminate().catch(() => {});
 });
-loadMapping();
+loadMapping().catch(e => console.error('No se pudo cargar la configuración:', e));
 renderHistory();
 </script>
 
